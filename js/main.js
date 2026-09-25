@@ -24,7 +24,6 @@ class Game {
     this.score = 0;
     this.lives = 3;
     this.slidingBlocks = [];
-    this.pendingCrushes = []; // wrogowie jadacy razem z blokiem, jeszcze nie spłaszczeni
     this.squashing = []; // wrogowie w trakcie krotkiej animacji splaszczenia
     this.heldKeys = []; // klawisze ruchu aktualnie przytrzymane, w kolejnosci nacisniecia
     this.lastSmashAt = 0;
@@ -50,7 +49,6 @@ class Game {
       this.enemies.push(new Enemy(s.col, s.row, enemySpeed, i));
     }
     this.slidingBlocks = [];
-    this.pendingCrushes = [];
     this.squashing = [];
   }
 
@@ -145,7 +143,6 @@ class Game {
     }
 
     this.updateSlidingBlocks(now);
-    this.updatePendingCrushes(now);
     this.updateSquashing(now);
     this.checkPlayerCollision();
 
@@ -171,63 +168,58 @@ class Game {
       return; // brak miejsca za blokiem - nie da sie pchnac
     }
 
-    let curCol = targetCol;
-    let curRow = targetRow;
-    let combo = 0;
-    const caught = []; // wrogowie na drodze bloku - pojada z nim az do zatrzymania
-
-    for (;;) {
-      const nCol = curCol + dx;
-      const nRow = curRow + dy;
-      const enemy = this.enemyAt(nCol, nRow);
-      if (enemy) {
-        combo += 1;
-        caught.push({ enemy, combo });
-        curCol = nCol;
-        curRow = nRow;
-        continue;
-      }
-      if (this.grid.isWalkable(nCol, nRow)) {
-        curCol = nCol;
-        curRow = nRow;
-        continue;
-      }
-      break; // przeszkoda - blok zatrzymuje sie na (curCol, curRow)
-    }
-
     this.grid.set(targetCol, targetRow, TILE_TYPE.EMPTY);
     sound.playPush();
-    const distance = Math.max(Math.abs(curCol - targetCol), Math.abs(curRow - targetRow));
-    const duration = Math.max(BLOCK_SLIDE_MS, distance * BLOCK_SLIDE_MS);
-    this.slidingBlocks.push({
-      fromCol: targetCol,
-      fromRow: targetRow,
-      toCol: curCol,
-      toRow: curRow,
-      start: now,
-      duration,
-    });
 
-    for (const { enemy, combo: comboIndex } of caught) {
+    const block = { col: targetCol, row: targetRow, dx, dy, carried: [], anim: null, finished: false };
+    this.slidingBlocks.push(block);
+    this.advanceSlidingBlock(block, now);
+  }
+
+  /**
+   * Blok przesuwa sie o jeden kafelek na raz, sprawdzajac kolizje na biezaco
+   * (a nie z gory dla calej trasy) - dzieki temu lapie tez wrogow, ktorzy
+   * wejda na jego tor dopiero w trakcie jazdy, i nie "przenika" przez nikogo.
+   */
+  advanceSlidingBlock(block, now) {
+    const nextCol = block.col + block.dx;
+    const nextRow = block.row + block.dy;
+
+    if (!this.grid.isWalkable(nextCol, nextRow)) {
+      this.finishSlidingBlock(block, now);
+      return;
+    }
+
+    const enemy = this.enemyAt(nextCol, nextRow);
+    if (enemy && !block.carried.includes(enemy)) {
       enemy.beingCarried = true;
-      enemy.beginMove(curCol, curRow, duration, now);
-      this.pendingCrushes.push({ enemy, combo: comboIndex, dx, dy, finishAt: now + duration });
+      block.carried.push(enemy);
+    }
+
+    block.anim = { fromCol: block.col, fromRow: block.row, toCol: nextCol, toRow: nextRow, start: now, duration: BLOCK_SLIDE_MS };
+    block.col = nextCol;
+    block.row = nextRow;
+
+    for (const carried of block.carried) {
+      carried.beginMove(nextCol, nextRow, BLOCK_SLIDE_MS, now);
     }
   }
 
-  /** Wrogowie jadacy z blokiem docieraja do miejsca zatrzymania - splaszczamy ich tam. */
-  updatePendingCrushes(now) {
-    this.pendingCrushes = this.pendingCrushes.filter((p) => {
-      if (now < p.finishAt) return true;
+  /** Blok trafil na przeszkode - osiada w miejscu, a przenoszeni wrogowie splaszczaja sie tutaj. */
+  finishSlidingBlock(block, now) {
+    this.grid.set(block.col, block.row, TILE_TYPE.ICE);
+    block.anim = null;
+    block.finished = true;
 
-      p.enemy.beingCarried = false;
-      p.enemy.squashed = true;
-      p.enemy.squashDx = p.dx;
-      p.enemy.squashDy = p.dy;
-      this.score += 100 * p.combo;
-      sound.playCrush(p.combo);
-      this.squashing.push({ enemy: p.enemy, finishAt: now + SQUASH_DURATION_MS });
-      return false;
+    block.carried.forEach((enemy, i) => {
+      const combo = i + 1;
+      enemy.beingCarried = false;
+      enemy.squashed = true;
+      enemy.squashDx = block.dx;
+      enemy.squashDy = block.dy;
+      this.score += 100 * combo;
+      sound.playCrush(combo);
+      this.squashing.push({ enemy, finishAt: now + SQUASH_DURATION_MS });
     });
   }
 
@@ -245,13 +237,11 @@ class Game {
   }
 
   updateSlidingBlocks(now) {
-    this.slidingBlocks = this.slidingBlocks.filter((b) => {
-      const t = (now - b.start) / b.duration;
-      if (t >= 1) {
-        this.grid.set(b.toCol, b.toRow, TILE_TYPE.ICE);
-        return false;
-      }
-      return true;
+    this.slidingBlocks = this.slidingBlocks.filter((block) => {
+      const t = (now - block.anim.start) / block.anim.duration;
+      if (t < 1) return true;
+      this.advanceSlidingBlock(block, now);
+      return !block.finished;
     });
   }
 
@@ -277,9 +267,10 @@ class Game {
     this.grid.draw(ctx);
 
     for (const b of this.slidingBlocks) {
-      const t = Math.min(1, (performance.now() - b.start) / b.duration);
-      const x = b.fromCol * TILE + (b.toCol - b.fromCol) * TILE * t;
-      const y = b.fromRow * TILE + (b.toRow - b.fromRow) * TILE * t;
+      if (!b.anim) continue;
+      const t = Math.min(1, (performance.now() - b.anim.start) / b.anim.duration);
+      const x = b.anim.fromCol * TILE + (b.anim.toCol - b.anim.fromCol) * TILE * t;
+      const y = b.anim.fromRow * TILE + (b.anim.toRow - b.anim.fromRow) * TILE * t;
       ctx.save();
       ctx.translate(x, y);
       this.grid.drawTile(ctx, 0, 0, TILE_TYPE.ICE);
