@@ -1,6 +1,7 @@
 import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS } from "./constants.js";
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
+import * as sound from "./sound.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -49,6 +50,7 @@ class Game {
   }
 
   onKeyDown(e) {
+    sound.unlock(); // wymaga gestu uzytkownika - najpewniej zadzialac przy kazdym klawiszu
     if (this.state === "start") {
       this.state = "playing";
       menuEl.style.display = "none";
@@ -98,6 +100,7 @@ class Game {
 
     this.grid.set(col, row, TILE_TYPE.EMPTY);
     this.lastSmashAt = now;
+    sound.playSmash();
   }
 
   restart() {
@@ -134,6 +137,7 @@ class Game {
     if (this.enemies.every((e) => !e.alive)) {
       this.state = "levelComplete";
       this.message = `Poziom ${this.level} ukonczony! Za chwile poziom ${this.level + 1}...`;
+      sound.playLevelComplete();
       setTimeout(() => {
         this.level += 1;
         this.startLevel();
@@ -164,6 +168,7 @@ class Game {
         enemy.alive = false;
         combo += 1;
         this.score += 100 * combo;
+        sound.playCrush(combo);
         curCol = nCol;
         curRow = nRow;
         continue;
@@ -177,6 +182,7 @@ class Game {
     }
 
     this.grid.set(targetCol, targetRow, TILE_TYPE.EMPTY);
+    sound.playPush();
     const distance = Math.max(Math.abs(curCol - targetCol), Math.abs(curRow - targetRow));
     this.slidingBlocks.push({
       fromCol: targetCol,
@@ -208,9 +214,11 @@ class Game {
     const hit = this.enemyAt(this.player.col, this.player.row);
     if (hit) {
       this.lives -= 1;
+      sound.playHit();
       if (this.lives <= 0) {
         this.state = "gameOver";
         this.message = "Koniec gry! Wcisnij R, aby zaczac od nowa.";
+        sound.playGameOver();
       } else {
         this.startLevel();
       }
