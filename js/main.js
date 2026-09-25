@@ -1,4 +1,4 @@
-import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS } from "./constants.js";
+import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS, SQUASH_DURATION_MS } from "./constants.js";
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
 import * as sound from "./sound.js";
@@ -24,6 +24,8 @@ class Game {
     this.score = 0;
     this.lives = 3;
     this.slidingBlocks = [];
+    this.pendingCrushes = []; // wrogowie jadacy razem z blokiem, jeszcze nie spłaszczeni
+    this.squashing = []; // wrogowie w trakcie krotkiej animacji splaszczenia
     this.heldKeys = []; // klawisze ruchu aktualnie przytrzymane, w kolejnosci nacisniecia
     this.lastSmashAt = 0;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
@@ -47,6 +49,8 @@ class Game {
       this.enemies.push(new Enemy(s.col, s.row, enemySpeed));
     }
     this.slidingBlocks = [];
+    this.pendingCrushes = [];
+    this.squashing = [];
   }
 
   onKeyDown(e) {
@@ -132,6 +136,8 @@ class Game {
     }
 
     this.updateSlidingBlocks(now);
+    this.updatePendingCrushes(now);
+    this.updateSquashing(now);
     this.checkPlayerCollision();
 
     if (this.enemies.every((e) => !e.alive)) {
@@ -159,16 +165,15 @@ class Game {
     let curCol = targetCol;
     let curRow = targetRow;
     let combo = 0;
+    const caught = []; // wrogowie na drodze bloku - pojada z nim az do zatrzymania
 
     for (;;) {
       const nCol = curCol + dx;
       const nRow = curRow + dy;
       const enemy = this.enemyAt(nCol, nRow);
       if (enemy) {
-        enemy.alive = false;
         combo += 1;
-        this.score += 100 * combo;
-        sound.playCrush(combo);
+        caught.push({ enemy, combo });
         curCol = nCol;
         curRow = nRow;
         continue;
@@ -184,13 +189,45 @@ class Game {
     this.grid.set(targetCol, targetRow, TILE_TYPE.EMPTY);
     sound.playPush();
     const distance = Math.max(Math.abs(curCol - targetCol), Math.abs(curRow - targetRow));
+    const duration = Math.max(BLOCK_SLIDE_MS, distance * BLOCK_SLIDE_MS);
     this.slidingBlocks.push({
       fromCol: targetCol,
       fromRow: targetRow,
       toCol: curCol,
       toRow: curRow,
       start: now,
-      duration: Math.max(BLOCK_SLIDE_MS, distance * BLOCK_SLIDE_MS),
+      duration,
+    });
+
+    for (const { enemy, combo: comboIndex } of caught) {
+      enemy.beingCarried = true;
+      enemy.beginMove(curCol, curRow, duration, now);
+      this.pendingCrushes.push({ enemy, combo: comboIndex, dx, dy, finishAt: now + duration });
+    }
+  }
+
+  /** Wrogowie jadacy z blokiem docieraja do miejsca zatrzymania - splaszczamy ich tam. */
+  updatePendingCrushes(now) {
+    this.pendingCrushes = this.pendingCrushes.filter((p) => {
+      if (now < p.finishAt) return true;
+
+      p.enemy.beingCarried = false;
+      p.enemy.squashed = true;
+      p.enemy.squashDx = p.dx;
+      p.enemy.squashDy = p.dy;
+      this.score += 100 * p.combo;
+      sound.playCrush(p.combo);
+      this.squashing.push({ enemy: p.enemy, finishAt: now + SQUASH_DURATION_MS });
+      return false;
+    });
+  }
+
+  /** Krotka animacja splaszczenia dobiega konca - wrog znika ostatecznie. */
+  updateSquashing(now) {
+    this.squashing = this.squashing.filter((s) => {
+      if (now < s.finishAt) return true;
+      s.enemy.alive = false;
+      return false;
     });
   }
 

@@ -125,11 +125,16 @@ export class Enemy extends Mover {
     this.moveInterval = moveInterval;
     this.lastMoveAt = 0;
     this.alive = true;
+    this.beingCarried = false; // jedzie razem z pchnietym blokiem lodu
+    this.squashed = false; // spłaszczony po dojechaniu do sciany, tuz przed usunieciem
+    this.squashDx = 0;
+    this.squashDy = 0;
   }
 
   update(now, grid, player) {
     super.update(now);
-    if (this.isMoving || !this.alive) return;
+    if (!this.alive || this.beingCarried || this.squashed) return;
+    if (this.isMoving) return;
     if (now - this.lastMoveAt < this.moveInterval) return;
 
     this.lastMoveAt = now;
@@ -180,6 +185,13 @@ export class Enemy extends Mover {
     ctx.save();
     ctx.translate(cx, cy);
 
+    if (this.squashed) {
+      // splaszczony wzdluz kierunku uderzenia w sciane, rozplaszczony w poprzek
+      const scaleX = this.squashDx !== 0 ? 0.25 : 1.35;
+      const scaleY = this.squashDy !== 0 ? 0.25 : 1.35;
+      ctx.scale(scaleX, scaleY);
+    }
+
     ctx.fillStyle = "#ff5a4e";
     ctx.beginPath();
     ctx.ellipse(0, 0, TILE * 0.34, TILE * 0.3, 0, 0, Math.PI * 2);
@@ -188,13 +200,15 @@ export class Enemy extends Mover {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.strokeStyle = "#8a1c14";
-    ctx.beginPath();
-    ctx.moveTo(-6, -10);
-    ctx.lineTo(-10, -16);
-    ctx.moveTo(6, -10);
-    ctx.lineTo(10, -16);
-    ctx.stroke();
+    if (!this.squashed) {
+      ctx.strokeStyle = "#8a1c14";
+      ctx.beginPath();
+      ctx.moveTo(-6, -10);
+      ctx.lineTo(-10, -16);
+      ctx.moveTo(6, -10);
+      ctx.lineTo(10, -16);
+      ctx.stroke();
+    }
 
     ctx.fillStyle = "#fff2ea";
     ctx.beginPath();
