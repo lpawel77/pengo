@@ -23,13 +23,15 @@ class Game {
     this.score = 0;
     this.lives = 3;
     this.slidingBlocks = [];
-    this.pendingDir = null;
+    this.heldKeys = []; // klawisze ruchu aktualnie przytrzymane, w kolejnosci nacisniecia
     this.lastSmashAt = 0;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
 
     this.startLevel();
 
     window.addEventListener("keydown", (e) => this.onKeyDown(e));
+    window.addEventListener("keyup", (e) => this.onKeyUp(e));
+    window.addEventListener("blur", () => this.heldKeys.length = 0);
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -64,11 +66,24 @@ class Game {
       return;
     }
 
-    const dir = KEY_TO_DIR[e.key];
-    if (dir) {
+    if (KEY_TO_DIR[e.key]) {
       e.preventDefault();
-      this.pendingDir = dir;
+      if (!this.heldKeys.includes(e.key)) this.heldKeys.push(e.key);
     }
+  }
+
+  onKeyUp(e) {
+    const idx = this.heldKeys.indexOf(e.key);
+    if (idx !== -1) this.heldKeys.splice(idx, 1);
+  }
+
+  /** Zwraca kierunek najpozniej wcisnietego, wciaz przytrzymanego klawisza ruchu. */
+  getActiveDirection() {
+    for (let i = this.heldKeys.length - 1; i >= 0; i--) {
+      const dir = KEY_TO_DIR[this.heldKeys[i]];
+      if (dir) return dir;
+    }
+    return null;
   }
 
   /** Niszczy blok lodu tuz przed graczem, w miejscu (bez przesuwania go). */
@@ -102,10 +117,10 @@ class Game {
   update(now) {
     if (this.state !== "playing") return;
 
-    if (this.pendingDir && !this.player.isMoving) {
-      const { dx, dy } = DIRECTIONS[this.pendingDir];
+    const activeDir = this.getActiveDirection();
+    if (activeDir && !this.player.isMoving) {
+      const { dx, dy } = DIRECTIONS[activeDir];
       this.player.tryMove(dx, dy, this.grid, (col, row) => this.tryPush(col, row, dx, dy, now), now);
-      this.pendingDir = null;
     }
     this.player.update(now);
 
