@@ -36,7 +36,7 @@ class Game {
   }
 
   startLevel() {
-    const layout = this.grid.generateLevel();
+    const layout = this.grid.generateLevel(this.level);
     this.player = new Player(layout.playerStart.col, layout.playerStart.row);
     const enemySpeed = Math.max(220, ENEMY_MOVE_MS_BASE - (this.level - 1) * 40);
     const enemyCount = Math.min(6, 3 + this.level);
