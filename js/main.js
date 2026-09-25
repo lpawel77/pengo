@@ -1,4 +1,4 @@
-import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE } from "./constants.js";
+import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS } from "./constants.js";
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
 
@@ -24,6 +24,7 @@ class Game {
     this.lives = 3;
     this.slidingBlocks = [];
     this.pendingDir = null;
+    this.lastSmashAt = 0;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
 
     this.startLevel();
@@ -57,11 +58,31 @@ class Game {
     }
     if (this.state === "levelComplete") return;
 
+    if (e.key === " " || e.key === "e" || e.key === "E") {
+      e.preventDefault();
+      this.trySmash();
+      return;
+    }
+
     const dir = KEY_TO_DIR[e.key];
     if (dir) {
       e.preventDefault();
       this.pendingDir = dir;
     }
+  }
+
+  /** Niszczy blok lodu tuz przed graczem, w miejscu (bez przesuwania go). */
+  trySmash() {
+    const now = performance.now();
+    if (now - this.lastSmashAt < SMASH_COOLDOWN_MS) return;
+
+    const { dx, dy } = DIRECTIONS[this.player.facing];
+    const col = this.player.col + dx;
+    const row = this.player.row + dy;
+    if (this.grid.get(col, row) !== TILE_TYPE.ICE) return;
+
+    this.grid.set(col, row, TILE_TYPE.EMPTY);
+    this.lastSmashAt = now;
   }
 
   restart() {

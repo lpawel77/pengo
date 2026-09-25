@@ -21,6 +21,7 @@ export const DIRECTIONS = {
 export const PLAYER_MOVE_MS = 130;
 export const BLOCK_SLIDE_MS = 90;
 export const ENEMY_MOVE_MS_BASE = 650;
+export const SMASH_COOLDOWN_MS = 200;
 
 export const COLORS = {
   wall: "#3a4a9f",
