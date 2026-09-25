@@ -34,3 +34,12 @@ export const COLORS = {
   diamondEdge: "#a0308f",
   floor: "#0f1642",
 };
+
+// paleta kolorow wrogow - kazdy dostaje inny, zeby latwo bylo ich od siebie odroznic
+export const ENEMY_COLORS = [
+  { fill: "#ff5a4e", outline: "#8a1c14" }, // czerwony
+  { fill: "#ff9d4e", outline: "#a35200" }, // pomaranczowy
+  { fill: "#eda100", outline: "#8a5b00" }, // zolty
+  { fill: "#b06aff", outline: "#5a2e99" }, // fioletowy
+  { fill: "#4ce07a", outline: "#1b7a3e" }, // zielony
+];

@@ -46,7 +46,7 @@ class Game {
     this.enemies = [];
     for (let i = 0; i < enemyCount; i++) {
       const s = layout.enemySpawns[i % layout.enemySpawns.length];
-      this.enemies.push(new Enemy(s.col, s.row, enemySpeed));
+      this.enemies.push(new Enemy(s.col, s.row, enemySpeed, i));
     }
     this.slidingBlocks = [];
     this.pendingCrushes = [];

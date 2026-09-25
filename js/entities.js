@@ -1,4 +1,4 @@
-import { TILE, PLAYER_MOVE_MS, ENEMY_MOVE_MS_BASE } from "./constants.js";
+import { TILE, PLAYER_MOVE_MS, ENEMY_MOVE_MS_BASE, ENEMY_COLORS } from "./constants.js";
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -120,7 +120,7 @@ export class Player extends Mover {
 }
 
 export class Enemy extends Mover {
-  constructor(col, row, moveInterval = ENEMY_MOVE_MS_BASE) {
+  constructor(col, row, moveInterval = ENEMY_MOVE_MS_BASE, colorIndex = 0) {
     super(col, row);
     this.moveInterval = moveInterval;
     this.lastMoveAt = 0;
@@ -129,6 +129,7 @@ export class Enemy extends Mover {
     this.squashed = false; // spłaszczony po dojechaniu do sciany, tuz przed usunieciem
     this.squashDx = 0;
     this.squashDy = 0;
+    this.color = ENEMY_COLORS[colorIndex % ENEMY_COLORS.length];
   }
 
   update(now, grid, player) {
@@ -192,16 +193,16 @@ export class Enemy extends Mover {
       ctx.scale(scaleX, scaleY);
     }
 
-    ctx.fillStyle = "#ff5a4e";
+    ctx.fillStyle = this.color.fill;
     ctx.beginPath();
     ctx.ellipse(0, 0, TILE * 0.34, TILE * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#8a1c14";
+    ctx.strokeStyle = this.color.outline;
     ctx.lineWidth = 2;
     ctx.stroke();
 
     if (!this.squashed) {
-      ctx.strokeStyle = "#8a1c14";
+      ctx.strokeStyle = this.color.outline;
       ctx.beginPath();
       ctx.moveTo(-6, -10);
       ctx.lineTo(-10, -16);
