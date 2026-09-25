@@ -28,6 +28,7 @@ class Game {
     this.squashing = []; // wrogowie w trakcie krotkiej animacji splaszczenia
     this.heldKeys = []; // klawisze ruchu aktualnie przytrzymane, w kolejnosci nacisniecia
     this.lastSmashAt = 0;
+    this.paused = false;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
 
     this.startLevel();
@@ -65,6 +66,13 @@ class Game {
       return;
     }
     if (this.state === "levelComplete") return;
+
+    if (e.key === "p" || e.key === "P") {
+      e.preventDefault();
+      this.paused = !this.paused;
+      return;
+    }
+    if (this.paused) return; // podczas pauzy ignorujemy wszystkie inne klawisze
 
     if (e.key === " " || e.key === "e" || e.key === "E") {
       e.preventDefault();
@@ -111,6 +119,7 @@ class Game {
     this.level = 1;
     this.score = 0;
     this.lives = 3;
+    this.paused = false;
     this.startLevel();
     this.state = "playing";
   }
@@ -122,7 +131,7 @@ class Game {
   }
 
   update(now) {
-    if (this.state !== "playing") return;
+    if (this.state !== "playing" || this.paused) return;
 
     const activeDir = this.getActiveDirection();
     if (activeDir && !this.player.isMoving) {
@@ -285,6 +294,8 @@ class Game {
 
     if (this.state === "gameOver" || this.state === "levelComplete") {
       this.drawOverlay();
+    } else if (this.paused) {
+      this.drawPauseOverlay();
     }
   }
 
@@ -306,6 +317,19 @@ class Game {
     ctx.font = "20px Consolas, monospace";
     ctx.textAlign = "center";
     wrapText(ctx, this.message, canvas.width / 2, canvas.height / 2, canvas.width - 60, 26);
+    ctx.textAlign = "left";
+  }
+
+  drawPauseOverlay() {
+    ctx.fillStyle = "rgba(11, 14, 35, 0.78)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffd23f";
+    ctx.font = "28px Consolas, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUZA", canvas.width / 2, canvas.height / 2 - 12);
+    ctx.fillStyle = "#eaf6ff";
+    ctx.font = "14px Consolas, monospace";
+    ctx.fillText("Wcisnij P, aby wznowic", canvas.width / 2, canvas.height / 2 + 18);
     ctx.textAlign = "left";
   }
 }
