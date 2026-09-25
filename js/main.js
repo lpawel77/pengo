@@ -190,10 +190,13 @@ class Game {
       return;
     }
 
-    const enemy = this.enemyAt(nextCol, nextRow);
-    if (enemy && !block.carried.includes(enemy)) {
-      enemy.beingCarried = true;
-      block.carried.push(enemy);
+    // lapiemy WSZYSTKICH zywych wrogow na tym polu - moze ich tam stac kilku naraz
+    // (np. gdy dwoje wrogow wystartowalo w tym samym miejscu)
+    for (const enemy of this.enemiesAt(nextCol, nextRow)) {
+      if (!block.carried.includes(enemy)) {
+        enemy.beingCarried = true;
+        block.carried.push(enemy);
+      }
     }
 
     block.anim = { fromCol: block.col, fromRow: block.row, toCol: nextCol, toRow: nextRow, start: now, duration: BLOCK_SLIDE_MS };
@@ -234,6 +237,11 @@ class Game {
 
   enemyAt(col, row) {
     return this.enemies.find((e) => e.alive && e.col === col && e.row === row);
+  }
+
+  /** Jak enemyAt, ale zwraca WSZYSTKICH zywych wrogow na danym polu (moze ich stac kilku naraz). */
+  enemiesAt(col, row) {
+    return this.enemies.filter((e) => e.alive && e.col === col && e.row === row);
   }
 
   updateSlidingBlocks(now) {
