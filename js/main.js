@@ -4,6 +4,7 @@ import { Player, Enemy } from "./entities.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const menuEl = document.getElementById("menu");
 canvas.width = COLS * TILE;
 canvas.height = ROWS * TILE + HUD_HEIGHT;
 
@@ -47,6 +48,7 @@ class Game {
   onKeyDown(e) {
     if (this.state === "start") {
       this.state = "playing";
+      menuEl.style.display = "none";
       return;
     }
     if (this.state === "gameOver") {
@@ -200,7 +202,7 @@ class Game {
 
     this.drawHud();
 
-    if (this.state !== "playing") {
+    if (this.state === "gameOver" || this.state === "levelComplete") {
       this.drawOverlay();
     }
   }

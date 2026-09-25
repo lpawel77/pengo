@@ -24,11 +24,64 @@ h1 {
   text-shadow: 2px 2px 0 #a6360f;
 }
 
+.stage {
+  position: relative;
+  display: inline-block;
+}
+
 canvas {
   background: #0f1642;
   border: 4px solid #3a4a9f;
   border-radius: 4px;
   image-rendering: pixelated;
+  display: block;
+}
+
+.menu {
+  position: absolute;
+  inset: 4px;
+  background: rgba(11, 14, 35, 0.94);
+  border-radius: 2px;
+  padding: 18px 22px;
+  text-align: left;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.menu h2 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #ffd23f;
+}
+
+.menu p {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.menu ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.menu strong {
+  color: #ff9d2f;
+}
+
+.menu .start-hint {
+  margin-top: 16px;
+  text-align: center;
+  color: #7fe7a0;
+  animation: blink 1.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .hint {
