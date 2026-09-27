@@ -171,16 +171,22 @@ class Game {
     this.grid.set(targetCol, targetRow, TILE_TYPE.EMPTY);
     sound.playPush();
 
-    const block = { col: targetCol, row: targetRow, dx, dy, carried: [], anim: null, finished: false };
+    const block = {
+      col: targetCol,
+      row: targetRow,
+      startCol: targetCol,
+      startRow: targetRow,
+      dx,
+      dy,
+      carried: [],
+      anim: null,
+      finished: false,
+    };
     this.slidingBlocks.push(block);
     this.advanceSlidingBlock(block, now);
   }
 
-  /**
-   * Blok przesuwa sie o jeden kafelek na raz, sprawdzajac kolizje na biezaco
-   * (a nie z gory dla calej trasy) - dzieki temu lapie tez wrogow, ktorzy
-   * wejda na jego tor dopiero w trakcie jazdy, i nie "przenika" przez nikogo.
-   */
+  /** Blok przesuwa sie o jeden kafelek na raz - jesli droga dalej jest zablokowana, zatrzymuje sie tutaj. */
   advanceSlidingBlock(block, now) {
     const nextCol = block.col + block.dx;
     const nextRow = block.row + block.dy;
@@ -190,21 +196,34 @@ class Game {
       return;
     }
 
-    // lapiemy WSZYSTKICH zywych wrogow na tym polu - moze ich tam stac kilku naraz
-    // (np. gdy dwoje wrogow wystartowalo w tym samym miejscu)
-    for (const enemy of this.enemiesAt(nextCol, nextRow)) {
-      if (!block.carried.includes(enemy)) {
-        enemy.beingCarried = true;
-        block.carried.push(enemy);
-      }
-    }
-
     block.anim = { fromCol: block.col, fromRow: block.row, toCol: nextCol, toRow: nextRow, start: now, duration: BLOCK_SLIDE_MS };
     block.col = nextCol;
     block.row = nextRow;
 
     for (const carried of block.carried) {
       carried.beginMove(nextCol, nextRow, BLOCK_SLIDE_MS, now);
+    }
+  }
+
+  /**
+   * Wywolywane co klatke dla kazdego jadacego bloku: sprawdza WSZYSTKIE pola
+   * juz przejechane (od startu az do biezacej pozycji), nie tylko kolejny krok.
+   * Wrogowie poruszaja sie na wlasnym, niezaleznym zegarze - bez tego wrog mogl
+   * "wskoczyc" na juz przejechane pole akurat miedzy sprawdzeniami kolejnych
+   * krokow i przenikac przez blok.
+   */
+  catchStragglers(block, now) {
+    const steps = Math.max(Math.abs(block.col - block.startCol), Math.abs(block.row - block.startRow));
+    for (let i = 0; i <= steps; i++) {
+      const col = block.startCol + block.dx * i;
+      const row = block.startRow + block.dy * i;
+      for (const enemy of this.enemiesAt(col, row)) {
+        if (block.carried.includes(enemy)) continue;
+        enemy.beingCarried = true;
+        block.carried.push(enemy);
+        const remaining = Math.max(16, block.anim.start + block.anim.duration - now);
+        enemy.beginMove(block.anim.toCol, block.anim.toRow, remaining, now);
+      }
     }
   }
 
@@ -245,6 +264,9 @@ class Game {
   }
 
   updateSlidingBlocks(now) {
+    for (const block of this.slidingBlocks) {
+      this.catchStragglers(block, now);
+    }
     this.slidingBlocks = this.slidingBlocks.filter((block) => {
       const t = (now - block.anim.start) / block.anim.duration;
       if (t < 1) return true;
