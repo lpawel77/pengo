@@ -45,17 +45,16 @@ export class Grid {
       this.set(COLS - 1, row, TILE_TYPE.WALL);
     }
 
-    const layouts = [this._layoutClassic, this._layoutCross, this._layoutGrid, this._layoutRing, this._layoutZigzag];
+    const layouts = [this._layoutClassic, this._layoutClassic2, this._layoutCross, this._layoutGrid, this._layoutRing, this._layoutZigzag];
     const layout = layouts[(levelNumber - 1) % layouts.length];
     return layout.call(this);
   }
 
   /**
    * Uklad 1: labirynt z pierwszej planszy oryginalnego Pengo (13x15 pol wewnatrz ramki).
-   * # = lod, D = diament, P = start gracza, E = start wroga, . = wolne pole.
    */
   _layoutClassic() {
-    const map = [
+    return this._layoutFromMap([
       "E#...#.....#E",
       ".#.###.###.#.",
       ".#.....#...#.",
@@ -71,7 +70,35 @@ export class Grid {
       ".#.#...#...#.",
       ".#.#.#####.#.",
       "E#.........#E",
-    ];
+    ]);
+  }
+
+  /** Uklad 2: labirynt z drugiej planszy (ACT 2) oryginalnego Pengo. */
+  _layoutClassic2() {
+    return this._layoutFromMap([
+      "E#.........#E",
+      ".#.######D.#.",
+      ".#.#.#.#.#...",
+      ".#.#.#.#.##D.",
+      "...#.....#.#.",
+      ".###.###.#.#.",
+      ".....#P..#.#.",
+      "######.###.#.",
+      ".......#.#...",
+      ".#######.####",
+      ".#.....#.....",
+      ".#.####D##.#.",
+      "...........#.",
+      ".###.#.#.#.#.",
+      "E#...#.#.#.#E",
+    ]);
+  }
+
+  /**
+   * Buduje plansze z mapy tekstowej - kazdy napis to jeden wiersz wnetrza (bez zewnetrznej sciany).
+   * # = lod, D = diament, P = start gracza, E = start wroga, . = wolne pole.
+   */
+  _layoutFromMap(map) {
     const tileFor = { "#": TILE_TYPE.ICE, D: TILE_TYPE.DIAMOND };
 
     let playerStart = null;
@@ -89,7 +116,7 @@ export class Grid {
     return { playerStart, enemySpawns };
   }
 
-  /** Uklad 2: krzyzowy korytarz przez srodek, 4 diamenty po cwiartkach. */
+  /** Uklad 3: krzyzowy korytarz przez srodek, 4 diamenty po cwiartkach. */
   _layoutCross() {
     const midCol = Math.floor(COLS / 2);
     const midRow = Math.floor(ROWS / 2);
@@ -115,7 +142,7 @@ export class Grid {
     };
   }
 
-  /** Uklad 3: siatka "w kratke" - dwa korytarze pionowe i dwa poziome dziela plansze na 9 pol lodu. */
+  /** Uklad 4: siatka "w kratke" - dwa korytarze pionowe i dwa poziome dziela plansze na 9 pol lodu. */
   _layoutGrid() {
     const colA = 4;
     const colB = 10;
@@ -147,7 +174,7 @@ export class Grid {
     };
   }
 
-  /** Uklad 4: prostokatny pierscien-korytarz z lodowym "sejfem" w srodku. */
+  /** Uklad 5: prostokatny pierscien-korytarz z lodowym "sejfem" w srodku. */
   _layoutRing() {
     const left = 2;
     const right = COLS - 3;
@@ -181,7 +208,7 @@ export class Grid {
     };
   }
 
-  /** Uklad 5: korytarz w ksztalcie "S" (zygzak) przez plansze. */
+  /** Uklad 6: korytarz w ksztalcie "S" (zygzak) przez plansze. */
   _layoutZigzag() {
     const rowTop = 3;
     const rowBottom = ROWS - 4;
@@ -207,7 +234,20 @@ export class Grid {
     };
   }
 
+  /** Czy co najmniej dwa diamenty stykaja sie ze soba (poziomo lub pionowo)? */
+  hasTouchingDiamonds() {
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        if (this.get(col, row) !== TILE_TYPE.DIAMOND) continue;
+        if (this.get(col + 1, row) === TILE_TYPE.DIAMOND || this.get(col, row + 1) === TILE_TYPE.DIAMOND) return true;
+      }
+    }
+    return false;
+  }
+
   draw(ctx) {
+    // ustawiane raz na klatke - drawTile uzywa go tez dla diamentu, ktory wlasnie sie slizga
+    this.diamondBlinkOn = this.hasTouchingDiamonds() && Math.floor(performance.now() / 250) % 2 === 0;
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
         this.drawTile(ctx, col, row, this.get(col, row));
@@ -239,7 +279,7 @@ export class Grid {
     } else if (type === TILE_TYPE.DIAMOND) {
       const cx = x + TILE / 2;
       const cy = y + TILE / 2;
-      ctx.fillStyle = COLORS.diamond;
+      ctx.fillStyle = this.diamondBlinkOn ? COLORS.diamondBlink : COLORS.diamond;
       ctx.beginPath();
       ctx.moveTo(cx, y + 4);
       ctx.lineTo(x + TILE - 4, cy);
@@ -247,7 +287,7 @@ export class Grid {
       ctx.lineTo(x + 4, cy);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = COLORS.diamondEdge;
+      ctx.strokeStyle = this.diamondBlinkOn ? COLORS.diamondBlinkEdge : COLORS.diamondEdge;
       ctx.lineWidth = 2;
       ctx.stroke();
     }

@@ -40,6 +40,9 @@ export const COLORS = {
   iceShine: "#eaf9ff",
   diamond: "#ff5fd0",
   diamondEdge: "#a0308f",
+  // diamenty migaja na przemian swoim kolorem i turkusowym, gdy co najmniej dwa sie stykaja
+  diamondBlink: "#3ee0d0",
+  diamondBlinkEdge: "#1a8f86",
   floor: "#0f1642",
 };
 
