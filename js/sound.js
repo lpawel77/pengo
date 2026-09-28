@@ -78,6 +78,13 @@ export function playCrush(combo = 1) {
   tone({ freqStart: base, freqEnd: base * 2.2, duration: 0.14, type: "sawtooth", peak: 0.22 });
 }
 
+/** Trzy diamenty w linii - dluzsze, blyszczace arpeggio. */
+export function playDiamondBonus() {
+  [784, 988, 1175, 1568, 1175, 1568].forEach((f, i) => {
+    tone({ freqStart: f, duration: 0.1, type: "triangle", peak: 0.22, delay: i * 0.07 });
+  });
+}
+
 /** Utrata zycia (dotkniecie wroga). */
 export function playHit() {
   tone({ freqStart: 300, freqEnd: 60, duration: 0.35, type: "sawtooth", peak: 0.25 });

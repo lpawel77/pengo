@@ -1,4 +1,4 @@
-import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS, SQUASH_DURATION_MS } from "./constants.js";
+import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS, SQUASH_DURATION_MS, DIAMOND_BONUS, STUN_MS } from "./constants.js";
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
 import * as sound from "./sound.js";
@@ -50,6 +50,8 @@ class Game {
     }
     this.slidingBlocks = [];
     this.squashing = [];
+    this.diamondBonusGiven = false; // bonus za 3 diamenty w linii tylko raz na poziom
+    this.bonusText = null; // { text, until } - napis na planszy po zdobyciu bonusu
   }
 
   onKeyDown(e) {
@@ -139,7 +141,7 @@ class Game {
     this.player.update(now);
 
     for (const enemy of this.enemies) {
-      enemy.update(now, this.grid, this.player);
+      enemy.update(now, this.grid, this.player, () => sound.playSmash());
     }
 
     this.updateSlidingBlocks(now);
@@ -160,7 +162,8 @@ class Game {
 
   tryPush(targetCol, targetRow, dx, dy, now) {
     const tileType = this.grid.get(targetCol, targetRow);
-    if (tileType !== TILE_TYPE.ICE) return; // sciana lub diament - nie da sie ruszyc
+    // lod i diamenty da sie pchac, sciany nie
+    if (tileType !== TILE_TYPE.ICE && tileType !== TILE_TYPE.DIAMOND) return;
 
     const nextCol = targetCol + dx;
     const nextRow = targetRow + dy;
@@ -172,6 +175,7 @@ class Game {
     sound.playPush();
 
     const block = {
+      type: tileType,
       col: targetCol,
       row: targetRow,
       startCol: targetCol,
@@ -229,9 +233,10 @@ class Game {
 
   /** Blok trafil na przeszkode - osiada w miejscu, a przenoszeni wrogowie splaszczaja sie tutaj. */
   finishSlidingBlock(block, now) {
-    this.grid.set(block.col, block.row, TILE_TYPE.ICE);
+    this.grid.set(block.col, block.row, block.type);
     block.anim = null;
     block.finished = true;
+    if (block.type === TILE_TYPE.DIAMOND) this.checkDiamondLine(now);
 
     block.carried.forEach((enemy, i) => {
       const combo = i + 1;
@@ -245,6 +250,30 @@ class Game {
     });
   }
 
+  /** Czy jakies 3 diamenty stoja obok siebie w jednej linii (poziomo lub pionowo)? */
+  hasDiamondLine() {
+    const isDiamond = (c, r) => this.grid.get(c, r) === TILE_TYPE.DIAMOND;
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        if (!isDiamond(col, row)) continue;
+        if (isDiamond(col + 1, row) && isDiamond(col + 2, row)) return true;
+        if (isDiamond(col, row + 1) && isDiamond(col, row + 2)) return true;
+      }
+    }
+    return false;
+  }
+
+  checkDiamondLine(now) {
+    if (this.diamondBonusGiven || !this.hasDiamondLine()) return;
+    this.diamondBonusGiven = true;
+    this.score += DIAMOND_BONUS;
+    for (const enemy of this.enemies) {
+      if (enemy.alive && !enemy.squashed) enemy.stun(now, STUN_MS);
+    }
+    this.bonusText = { text: `BONUS ${DIAMOND_BONUS}!`, until: now + 2500 };
+    sound.playDiamondBonus();
+  }
+
   /** Krotka animacja splaszczenia dobiega konca - wrog znika ostatecznie. */
   updateSquashing(now) {
     this.squashing = this.squashing.filter((s) => {
@@ -254,11 +283,7 @@ class Game {
     });
   }
 
-  enemyAt(col, row) {
-    return this.enemies.find((e) => e.alive && e.col === col && e.row === row);
-  }
-
-  /** Jak enemyAt, ale zwraca WSZYSTKICH zywych wrogow na danym polu (moze ich stac kilku naraz). */
+  /** Zwraca WSZYSTKICH zywych wrogow na danym polu (moze ich stac kilku naraz). */
   enemiesAt(col, row) {
     return this.enemies.filter((e) => e.alive && e.col === col && e.row === row);
   }
@@ -277,7 +302,8 @@ class Game {
 
   checkPlayerCollision() {
     if (this.player.isMoving) return;
-    const hit = this.enemyAt(this.player.col, this.player.row);
+    // ogluszeni wrogowie sa niegrozni
+    const hit = this.enemiesAt(this.player.col, this.player.row).find((e) => !e.isStunned());
     if (hit) {
       this.lives -= 1;
       sound.playHit();
@@ -303,12 +329,23 @@ class Game {
       const y = b.anim.fromRow * TILE + (b.anim.toRow - b.anim.fromRow) * TILE * t;
       ctx.save();
       ctx.translate(x, y);
-      this.grid.drawTile(ctx, 0, 0, TILE_TYPE.ICE);
+      this.grid.drawTile(ctx, 0, 0, b.type);
       ctx.restore();
     }
 
     for (const enemy of this.enemies) enemy.draw(ctx);
     this.player.draw(ctx);
+
+    if (this.bonusText && performance.now() < this.bonusText.until) {
+      ctx.font = "bold 28px Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = "#0b0e23";
+      ctx.strokeText(this.bonusText.text, canvas.width / 2, (ROWS * TILE) / 2);
+      ctx.fillStyle = "#ffd23f";
+      ctx.fillText(this.bonusText.text, canvas.width / 2, (ROWS * TILE) / 2);
+      ctx.textAlign = "left";
+    }
     ctx.restore();
 
     this.drawHud();

@@ -45,12 +45,51 @@ export class Grid {
       this.set(COLS - 1, row, TILE_TYPE.WALL);
     }
 
-    const layouts = [this._layoutCross, this._layoutGrid, this._layoutRing, this._layoutZigzag];
+    const layouts = [this._layoutClassic, this._layoutCross, this._layoutGrid, this._layoutRing, this._layoutZigzag];
     const layout = layouts[(levelNumber - 1) % layouts.length];
     return layout.call(this);
   }
 
-  /** Uklad 1: krzyzowy korytarz przez srodek, 4 diamenty po cwiartkach. */
+  /**
+   * Uklad 1: labirynt z pierwszej planszy oryginalnego Pengo (13x15 pol wewnatrz ramki).
+   * # = lod, D = diament, P = start gracza, E = start wroga, . = wolne pole.
+   */
+  _layoutClassic() {
+    const map = [
+      "E#...#.....#E",
+      ".#.###.###.#.",
+      ".#.....#...#.",
+      ".#######.###.",
+      ".#.......#.#.",
+      ".#.##D####.#.",
+      ".#...#P..#.#.",
+      ".###.###.#.D.",
+      ".#.#.#...#...",
+      ".#.#.#.###.#.",
+      "...#...#...#.",
+      ".#.D##.#.###.",
+      ".#.#...#...#.",
+      ".#.#.#####.#.",
+      "E#.........#E",
+    ];
+    const tileFor = { "#": TILE_TYPE.ICE, D: TILE_TYPE.DIAMOND };
+
+    let playerStart = null;
+    const enemySpawns = [];
+    map.forEach((line, r) => {
+      [...line].forEach((ch, c) => {
+        const col = c + 1;
+        const row = r + 1;
+        this.set(col, row, tileFor[ch] ?? TILE_TYPE.EMPTY);
+        if (ch === "P") playerStart = { col, row };
+        if (ch === "E") enemySpawns.push({ col, row });
+      });
+    });
+
+    return { playerStart, enemySpawns };
+  }
+
+  /** Uklad 2: krzyzowy korytarz przez srodek, 4 diamenty po cwiartkach. */
   _layoutCross() {
     const midCol = Math.floor(COLS / 2);
     const midRow = Math.floor(ROWS / 2);
@@ -76,12 +115,12 @@ export class Grid {
     };
   }
 
-  /** Uklad 2: siatka "w kratke" - dwa korytarze pionowe i dwa poziome dziela plansze na 9 pol lodu. */
+  /** Uklad 3: siatka "w kratke" - dwa korytarze pionowe i dwa poziome dziela plansze na 9 pol lodu. */
   _layoutGrid() {
     const colA = 4;
     const colB = 10;
-    const rowA = 4;
-    const rowB = 8;
+    const rowA = 5;
+    const rowB = ROWS - 6;
 
     for (let row = 1; row < ROWS - 1; row++) {
       this.set(colA, row, TILE_TYPE.EMPTY);
@@ -94,8 +133,8 @@ export class Grid {
 
     this.set(2, 2, TILE_TYPE.DIAMOND);
     this.set(12, 2, TILE_TYPE.DIAMOND);
-    this.set(2, 10, TILE_TYPE.DIAMOND);
-    this.set(12, 10, TILE_TYPE.DIAMOND);
+    this.set(2, ROWS - 3, TILE_TYPE.DIAMOND);
+    this.set(12, ROWS - 3, TILE_TYPE.DIAMOND);
 
     return {
       playerStart: { col: colA, row: rowA },
@@ -108,7 +147,7 @@ export class Grid {
     };
   }
 
-  /** Uklad 3: prostokatny pierscien-korytarz z lodowym "sejfem" w srodku. */
+  /** Uklad 4: prostokatny pierscien-korytarz z lodowym "sejfem" w srodku. */
   _layoutRing() {
     const left = 2;
     const right = COLS - 3;
@@ -142,7 +181,7 @@ export class Grid {
     };
   }
 
-  /** Uklad 4: korytarz w ksztalcie "S" (zygzak) przez plansze. */
+  /** Uklad 5: korytarz w ksztalcie "S" (zygzak) przez plansze. */
   _layoutZigzag() {
     const rowTop = 3;
     const rowBottom = ROWS - 4;
