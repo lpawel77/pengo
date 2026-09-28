@@ -24,7 +24,7 @@ function envelope(gainNode, now, attack, decay, peak) {
   gainNode.gain.exponentialRampToValueAtTime(0.001, now + attack + decay);
 }
 
-function tone({ freqStart, freqEnd, duration, type = "square", peak = 0.2, delay = 0 }) {
+function tone({ freqStart, freqEnd, duration, type = "square", peak = 0.2, delay = 0, output = null }) {
   const audio = getCtx();
   const now = audio.currentTime + delay;
   const osc = audio.createOscillator();
@@ -35,7 +35,7 @@ function tone({ freqStart, freqEnd, duration, type = "square", peak = 0.2, delay
     osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), now + duration);
   }
   envelope(gain, now, 0.005, duration, peak);
-  osc.connect(gain).connect(audio.destination);
+  osc.connect(gain).connect(output || audio.destination);
   osc.start(now);
   osc.stop(now + duration + 0.05);
 }
@@ -83,6 +83,46 @@ export function playDiamondBonus() {
   [784, 988, 1175, 1568, 1175, 1568].forEach((f, i) => {
     tone({ freqStart: f, duration: 0.1, type: "triangle", peak: 0.22, delay: i * 0.07 });
   });
+}
+
+// melodyjka grana w kolko podczas ogluszenia wrogow (nuty w Hz)
+const STUN_TUNE = [1047, 1319, 1568, 1319, 1175, 1397, 1760, 1397];
+const STUN_WARNING_MS = 2000; // koncowka ogluszenia - szybciej i wyzej, jako ostrzezenie
+
+/**
+ * Gra melodyjke przez durationMs (po opoznieniu delayMs). Zwraca funkcje, ktora ja
+ * wycisza przed czasem (np. utrata zycia, koniec poziomu).
+ */
+export function startStunMusic(durationMs, delayMs = 0) {
+  const audio = getCtx();
+  const master = audio.createGain();
+  master.gain.value = 1;
+  master.connect(audio.destination);
+
+  // cala melodyjka jest planowana od razu - kilkadziesiat krotkich nut to dla Web Audio drobiazg
+  const startAt = delayMs / 1000;
+  const endAt = startAt + durationMs / 1000;
+  const warnAt = endAt - STUN_WARNING_MS / 1000;
+  let t = startAt;
+  let i = 0;
+  while (t < endAt) {
+    const warning = t >= warnAt;
+    const freq = STUN_TUNE[i % STUN_TUNE.length] * (warning ? 1.5 : 1);
+    tone({ freqStart: freq, duration: warning ? 0.06 : 0.09, type: "square", peak: 0.07, delay: t, output: master });
+    t += warning ? 0.085 : 0.14;
+    i++;
+  }
+
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    const now = audio.currentTime;
+    master.gain.cancelScheduledValues(now);
+    master.gain.setValueAtTime(master.gain.value, now);
+    master.gain.linearRampToValueAtTime(0, now + 0.05);
+    setTimeout(() => master.disconnect(), 100);
+  };
 }
 
 /** Utrata zycia (dotkniecie wroga). */

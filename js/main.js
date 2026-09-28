@@ -56,6 +56,13 @@ class Game {
     this.squashing = [];
     this.diamondBonusGiven = false; // bonus za 3 diamenty w linii tylko raz na poziom
     this.bonusText = null; // { text, until } - napis na planszy po zdobyciu bonusu
+    this.stopStunMusic();
+  }
+
+  /** Wycisza melodyjke ogluszenia, jesli jeszcze gra. */
+  stopStunMusic() {
+    if (this.stunMusicStop) this.stunMusicStop();
+    this.stunMusicStop = null;
   }
 
   onKeyDown(e) {
@@ -118,6 +125,7 @@ class Game {
   /** Koniec gry: jesli wynik miesci sie na liscie - najpierw wpisanie imienia, potem lista. */
   async endGame() {
     this.heldKeys.length = 0;
+    this.stopStunMusic();
     sound.playGameOver();
     this.newScoreIndex = -1;
     this.state = "loadingScores";
@@ -194,6 +202,7 @@ class Game {
 
     if (this.enemies.every((e) => !e.alive)) {
       this.state = "levelComplete";
+      this.stopStunMusic();
       this.message = `Poziom ${this.level} ukonczony! Za chwile poziom ${this.level + 1}...`;
       sound.playLevelComplete();
       setTimeout(() => {
@@ -316,6 +325,9 @@ class Game {
     }
     this.bonusText = { text: `BONUS ${DIAMOND_BONUS}!`, until: now + 2500 };
     sound.playDiamondBonus();
+    // melodyjka ogluszenia rusza po fanfarze bonusu i gra do konca ogluszenia
+    this.stopStunMusic();
+    this.stunMusicStop = sound.startStunMusic(STUN_MS - 500, 500);
   }
 
   /** Krotka animacja splaszczenia dobiega konca - wrog znika ostatecznie. */
