@@ -25,7 +25,7 @@ export const SMASH_COOLDOWN_MS = 200;
 export const SQUASH_DURATION_MS = 220;
 // ustawienie 3 diamentow w jednej linii: bonus punktowy i ogluszenie wszystkich wrogow
 export const DIAMOND_BONUS = 5000;
-export const STUN_MS = 7000;
+export const STUN_MS = 10000;
 // ile "krokow" kosztuje wroga przejscie przez blok lodu przy szukaniu drogi - niewiele wiecej
 // niz zwykle pole, wiec wrog rozbijajacy lod idzie do gracza prawie najkrotsza droga
 export const ENEMY_ICE_COST = 1.5;
