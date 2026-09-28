@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+highscores.json
+highscores.json.tmp

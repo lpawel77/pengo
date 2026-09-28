@@ -2,6 +2,7 @@ import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, EN
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
 import * as sound from "./sound.js";
+import * as highscores from "./highscores.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -19,7 +20,7 @@ const KEY_TO_DIR = {
 class Game {
   constructor() {
     this.grid = new Grid();
-    this.state = "start"; // start | playing | levelComplete | gameOver
+    this.state = "start"; // start | playing | levelComplete | loadingScores | enterName | gameOver
     this.level = 1;
     this.score = 0;
     this.lives = 3;
@@ -29,6 +30,9 @@ class Game {
     this.lastSmashAt = 0;
     this.paused = false;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
+    this.nameInput = ""; // imie wpisywane po rekordzie
+    this.scoreList = []; // lista wynikow pokazywana po zakonczeniu gry
+    this.newScoreIndex = -1; // pozycja swiezo dopisanego wyniku (wyrozniona)
 
     this.startLevel();
 
@@ -61,6 +65,11 @@ class Game {
       menuEl.style.display = "none";
       return;
     }
+    if (this.state === "loadingScores") return; // czekamy na liste wynikow z serwera
+    if (this.state === "enterName") {
+      this.onNameKey(e);
+      return;
+    }
     if (this.state === "gameOver") {
       if (e.key === "r" || e.key === "R") this.restart();
       return;
@@ -83,6 +92,41 @@ class Game {
     if (KEY_TO_DIR[e.key]) {
       e.preventDefault();
       if (!this.heldKeys.includes(e.key)) this.heldKeys.push(e.key);
+    }
+  }
+
+  /** Wpisywanie imienia na liste wynikow: litery/cyfry/spacja, Backspace, Enter. */
+  onNameKey(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const name = this.nameInput.trim() || "PENGO";
+      this.state = "loadingScores";
+      highscores.addScore(name, this.score, this.level).then(({ list, index }) => {
+        this.scoreList = list;
+        this.newScoreIndex = index;
+        this.state = "gameOver";
+      });
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      this.nameInput = this.nameInput.slice(0, -1);
+    } else if (e.key.length === 1 && /[\p{L}\p{N} _.-]/u.test(e.key)) {
+      e.preventDefault();
+      if (this.nameInput.length < highscores.MAX_NAME_LENGTH) this.nameInput += e.key.toUpperCase();
+    }
+  }
+
+  /** Koniec gry: jesli wynik miesci sie na liscie - najpierw wpisanie imienia, potem lista. */
+  async endGame() {
+    this.heldKeys.length = 0;
+    sound.playGameOver();
+    this.newScoreIndex = -1;
+    this.state = "loadingScores";
+    this.scoreList = await highscores.loadScores();
+    if (highscores.qualifies(this.score, this.scoreList)) {
+      this.nameInput = highscores.lastName();
+      this.state = "enterName";
+    } else {
+      this.state = "gameOver";
     }
   }
 
@@ -308,9 +352,7 @@ class Game {
       this.lives -= 1;
       sound.playHit();
       if (this.lives <= 0) {
-        this.state = "gameOver";
-        this.message = "Koniec gry! Wcisnij R, aby zaczac od nowa.";
-        sound.playGameOver();
+        this.endGame();
       } else {
         this.startLevel();
       }
@@ -350,7 +392,14 @@ class Game {
 
     this.drawHud();
 
-    if (this.state === "gameOver" || this.state === "levelComplete") {
+    if (this.state === "enterName") {
+      this.drawNameEntry();
+    } else if (this.state === "gameOver") {
+      this.drawScoreList();
+    } else if (this.state === "loadingScores") {
+      this.message = "Wczytywanie wynikow...";
+      this.drawOverlay();
+    } else if (this.state === "levelComplete") {
       this.drawOverlay();
     } else if (this.paused) {
       this.drawPauseOverlay();
@@ -375,6 +424,86 @@ class Game {
     ctx.font = "20px Consolas, monospace";
     ctx.textAlign = "center";
     wrapText(ctx, this.message, canvas.width / 2, canvas.height / 2, canvas.width - 60, 26);
+    ctx.textAlign = "left";
+  }
+
+  drawNameEntry() {
+    ctx.fillStyle = "rgba(11, 14, 35, 0.85)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    ctx.fillStyle = "#ffd23f";
+    ctx.font = "bold 28px Consolas, monospace";
+    ctx.fillText("NOWY REKORD!", cx, cy - 90);
+    ctx.fillStyle = "#eaf6ff";
+    ctx.font = "20px Consolas, monospace";
+    ctx.fillText(`Wynik: ${this.score}`, cx, cy - 52);
+    ctx.fillText("Wpisz swoje imie:", cx, cy - 12);
+
+    // pole tekstowe z migajacym kursorem
+    const boxW = 260;
+    ctx.strokeStyle = "#5f72d6";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - boxW / 2, cy + 8, boxW, 40);
+    const cursor = Math.floor(performance.now() / 400) % 2 === 0 ? "_" : " ";
+    ctx.fillStyle = "#ffd23f";
+    ctx.font = "bold 24px Consolas, monospace";
+    ctx.fillText(this.nameInput + cursor, cx, cy + 29);
+
+    ctx.fillStyle = "#9fb3d9";
+    ctx.font = "14px Consolas, monospace";
+    ctx.fillText("Enter - zapisz   Backspace - usun", cx, cy + 76);
+    ctx.textAlign = "left";
+  }
+
+  drawScoreList() {
+    ctx.fillStyle = "rgba(11, 14, 35, 0.88)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    const cx = canvas.width / 2;
+    let y = 80;
+
+    ctx.fillStyle = "#ff5a4e";
+    ctx.font = "bold 26px Consolas, monospace";
+    ctx.fillText("KONIEC GRY", cx, y);
+    y += 34;
+    ctx.fillStyle = "#eaf6ff";
+    ctx.font = "18px Consolas, monospace";
+    ctx.fillText(`Twoj wynik: ${this.score}`, cx, y);
+    y += 50;
+
+    ctx.fillStyle = "#ffd23f";
+    ctx.font = "bold 22px Consolas, monospace";
+    ctx.fillText("NAJLEPSZE WYNIKI", cx, y);
+    y += 36;
+
+    ctx.font = "18px Consolas, monospace";
+    if (this.scoreList.length === 0) {
+      ctx.fillStyle = "#9fb3d9";
+      ctx.fillText("Brak wpisow", cx, y);
+    }
+    this.scoreList.forEach((entry, i) => {
+      const highlighted = i === this.newScoreIndex;
+      // swiezy wpis miga, zeby latwo go bylo znalezc
+      if (highlighted && Math.floor(performance.now() / 300) % 2 === 0) ctx.fillStyle = "#ffffff";
+      else ctx.fillStyle = highlighted ? "#ffd23f" : "#eaf6ff";
+      ctx.textAlign = "right";
+      ctx.fillText(`${i + 1}.`, 70, y);
+      ctx.textAlign = "left";
+      ctx.fillText(entry.name, 84, y);
+      ctx.textAlign = "right";
+      ctx.fillText(String(entry.score), 340, y);
+      ctx.fillStyle = highlighted ? ctx.fillStyle : "#9fb3d9";
+      ctx.fillText(`poz. ${entry.level}`, canvas.width - 36, y);
+      y += 28;
+    });
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#eaf6ff";
+    ctx.font = "16px Consolas, monospace";
+    ctx.fillText("Wcisnij R, aby zagrac jeszcze raz", cx, canvas.height - 40);
     ctx.textAlign = "left";
   }
 
