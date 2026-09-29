@@ -1,4 +1,5 @@
-import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS, SQUASH_DURATION_MS, DIAMOND_BONUS, STUN_MS } from "./constants.js";
+import { TILE, COLS, ROWS, HUD_HEIGHT, TILE_TYPE, DIRECTIONS, COLORS, BLOCK_SLIDE_MS, ENEMY_MOVE_MS_BASE, SMASH_COOLDOWN_MS, SQUASH_DURATION_MS, DIAMOND_BONUS, STUN_MS,
+  WALL_STUN_MS, WALL_SHAKE_MS, WALL_PUSH_COOLDOWN_MS, STUNNED_KILL_POINTS } from "./constants.js";
 import { Grid } from "./grid.js";
 import { Player, Enemy } from "./entities.js";
 import * as sound from "./sound.js";
@@ -28,6 +29,8 @@ class Game {
     this.squashing = []; // wrogowie w trakcie krotkiej animacji splaszczenia
     this.heldKeys = []; // klawisze ruchu aktualnie przytrzymane, w kolejnosci nacisniecia
     this.lastSmashAt = 0;
+    this.lastWallPushAt = -Infinity;
+    this.wallFx = {}; // strona ramki -> { dx, dy, shakeUntil, flashUntil } - drganie i miganie po pchnieciu
     this.paused = false;
     this.message = "Nacisnij dowolny klawisz, aby zaczac";
     this.nameInput = ""; // imie wpisywane po rekordzie
@@ -44,6 +47,7 @@ class Game {
 
   startLevel() {
     const layout = this.grid.generateLevel(this.level);
+    this.layout = layout; // punkty startowe - potrzebne tez po utracie zycia
     this.player = new Player(layout.playerStart.col, layout.playerStart.row);
     const enemySpeed = Math.max(220, ENEMY_MOVE_MS_BASE - (this.level - 1) * 40);
     const enemyCount = Math.min(6, 3 + this.level);
@@ -56,7 +60,60 @@ class Game {
     this.squashing = [];
     this.diamondBonusGiven = false; // bonus za 3 diamenty w linii tylko raz na poziom
     this.bonusText = null; // { text, until } - napis na planszy po zdobyciu bonusu
+    this.wallFx = {};
     this.stopStunMusic();
+  }
+
+  /**
+   * Utrata zycia bez resetu poziomu (jak w oryginale): zabici wrogowie zostaja zabici, bloki
+   * zostaja tam, gdzie sa - wracaja tylko pozycje Pengo i zywych wrogow, a wrogowie chwile czekaja.
+   */
+  respawnAfterDeath(now) {
+    this.heldKeys.length = 0;
+    // jadace bloki osiadaja od razu (przewozeni wrogowie gina jak zwykle)
+    for (const block of this.slidingBlocks) {
+      if (!block.finished) this.finishSlidingBlock(block, now);
+    }
+    this.slidingBlocks = [];
+    this.stopStunMusic();
+    this.wallFx = {}; // ogluszenia sa kasowane, wiec i miganie scian
+
+    const taken = new Set();
+    const start = this.nearestFree(this.layout.playerStart, taken);
+    this.player = new Player(start.col, start.row);
+    taken.add(`${start.col},${start.row}`);
+
+    const alive = this.enemies.filter((e) => e.alive && !e.squashed);
+    alive.forEach((enemy, i) => {
+      const spot = this.nearestFree(this.layout.enemySpawns[i % this.layout.enemySpawns.length], taken);
+      taken.add(`${spot.col},${spot.row}`);
+      enemy.col = spot.col;
+      enemy.row = spot.row;
+      enemy.anim = null;
+      enemy.breaking = null;
+      enemy.stunnedUntil = 0;
+      enemy.wanderSteps = 0;
+      enemy.lastMoveAt = now + 900; // krotka chwila na zlapanie oddechu
+    });
+    this.bonusText = { text: `ZYCIA: ${this.lives}`, until: now + 1500 };
+  }
+
+  /** Najblizsze wolne pole od podanego (punkt startowy mogl zostac zastawiony blokiem). */
+  nearestFree(from, taken) {
+    const seen = new Set([`${from.col},${from.row}`]);
+    const queue = [from];
+    while (queue.length > 0) {
+      const { col, row } = queue.shift();
+      if (this.grid.isWalkable(col, row) && !taken.has(`${col},${row}`)) return { col, row };
+      for (const { dx, dy } of Object.values(DIRECTIONS)) {
+        const next = { col: col + dx, row: row + dy };
+        const key = `${next.col},${next.row}`;
+        if (!this.grid.inBounds(next.col, next.row) || seen.has(key)) continue;
+        seen.add(key);
+        queue.push(next);
+      }
+    }
+    return from;
   }
 
   /** Wycisza melodyjke ogluszenia, jesli jeszcze gra. */
@@ -198,7 +255,7 @@ class Game {
 
     this.updateSlidingBlocks(now);
     this.updateSquashing(now);
-    this.checkPlayerCollision();
+    this.checkPlayerCollision(now);
 
     if (this.enemies.every((e) => !e.alive)) {
       this.state = "levelComplete";
@@ -215,6 +272,10 @@ class Game {
 
   tryPush(targetCol, targetRow, dx, dy, now) {
     const tileType = this.grid.get(targetCol, targetRow);
+    if (tileType === TILE_TYPE.WALL) {
+      this.shakeWall(dx, dy, now);
+      return;
+    }
     // lod i diamenty da sie pchac, sciany nie
     if (tileType !== TILE_TYPE.ICE && tileType !== TILE_TYPE.DIAMOND) return;
 
@@ -241,6 +302,28 @@ class Game {
     };
     this.slidingBlocks.push(block);
     this.advanceSlidingBlock(block, now);
+  }
+
+  /**
+   * Pchniecie zewnetrznej sciany (wszystkie sciany planszy to jej ramka): sciana drga,
+   * a wrogowie stojacy tuz przy tej scianie zostaja na chwile ogluszeni.
+   */
+  shakeWall(dx, dy, now) {
+    if (now - this.lastWallPushAt < WALL_PUSH_COOLDOWN_MS) return;
+    this.lastWallPushAt = now;
+    const side = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "top" : "bottom";
+    const fx = (this.wallFx[side] ||= { dx, dy, shakeUntil: 0, flashUntil: 0 });
+    fx.shakeUntil = now + WALL_SHAKE_MS;
+    sound.playWallShake();
+    // pole przy scianie: lewa -> kolumna 1, prawa -> COLS-2, gorna -> wiersz 1, dolna -> ROWS-2
+    const nextToWall = (e) => (dx < 0 && e.col === 1) || (dx > 0 && e.col === COLS - 2)
+      || (dy < 0 && e.row === 1) || (dy > 0 && e.row === ROWS - 2);
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || enemy.squashed || enemy.beingCarried || !nextToWall(enemy)) continue;
+      // nie skracamy dluzszego ogluszenia (np. po 3 diamentach)
+      if (enemy.stunnedUntil < now + WALL_STUN_MS) enemy.stun(now, WALL_STUN_MS);
+      fx.flashUntil = now + WALL_STUN_MS; // sciana miga tylko, gdy kogos ogluszyla
+    }
   }
 
   /** Blok przesuwa sie o jeden kafelek na raz - jesli droga dalej jest zablokowana, zatrzymuje sie tutaj. */
@@ -356,17 +439,27 @@ class Game {
     });
   }
 
-  checkPlayerCollision() {
+  checkPlayerCollision(now) {
     if (this.player.isMoving) return;
-    // ogluszeni wrogowie sa niegrozni
-    const hit = this.enemiesAt(this.player.col, this.player.row).find((e) => !e.isStunned());
+    const here = this.enemiesAt(this.player.col, this.player.row).filter((e) => !e.squashed);
+    // ogluszeni wrogowie sa niegrozni - wejscie na nich ich zabija
+    const { dx, dy } = DIRECTIONS[this.player.facing];
+    for (const enemy of here.filter((e) => e.isStunned(now))) {
+      enemy.squashed = true;
+      enemy.squashDx = dx;
+      enemy.squashDy = dy;
+      this.score += STUNNED_KILL_POINTS;
+      sound.playStunnedKill();
+      this.squashing.push({ enemy, finishAt: now + SQUASH_DURATION_MS });
+    }
+    const hit = here.find((e) => !e.isStunned(now));
     if (hit) {
       this.lives -= 1;
       sound.playHit();
       if (this.lives <= 0) {
         this.endGame();
       } else {
-        this.startLevel();
+        this.respawnAfterDeath(now);
       }
     }
   }
@@ -375,6 +468,7 @@ class Game {
     ctx.save();
     ctx.translate(0, HUD_HEIGHT);
     this.grid.draw(ctx);
+    this.drawWallFx();
 
     for (const b of this.slidingBlocks) {
       if (!b.anim) continue;
@@ -415,6 +509,43 @@ class Game {
       this.drawOverlay();
     } else if (this.paused) {
       this.drawPauseOverlay();
+    }
+  }
+
+  /**
+   * Efekty uderzonych scian: krotkie drganie w strone uderzenia, a przez czas ogluszenia
+   * miganie na przemian zwyklym kolorem sciany i seledynowym.
+   */
+  drawWallFx() {
+    const now = performance.now();
+    for (const [side, fx] of Object.entries(this.wallFx)) {
+      const shakeLeft = fx.shakeUntil - now;
+      const flashing = fx.flashUntil > now;
+      if (shakeLeft <= 0 && !flashing) {
+        delete this.wallFx[side];
+        continue;
+      }
+      const { dx, dy } = fx;
+      const amp = shakeLeft > 0 ? 3 * Math.sin(now / 22) * (shakeLeft / WALL_SHAKE_MS) : 0;
+      const green = flashing && Math.floor(now / 200) % 2 === 0;
+      const tiles = [];
+      if (dx !== 0) for (let row = 0; row < ROWS; row++) tiles.push([dx < 0 ? 0 : COLS - 1, row]);
+      else for (let col = 0; col < COLS; col++) tiles.push([col, dy < 0 ? 0 : ROWS - 1]);
+      ctx.save();
+      ctx.translate(dx * amp, dy * amp);
+      for (const [col, row] of tiles) {
+        if (!green) {
+          this.grid.drawTile(ctx, col, row, TILE_TYPE.WALL);
+          continue;
+        }
+        const x = col * TILE, y = row * TILE;
+        ctx.fillStyle = COLORS.wallFlash;
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = COLORS.wallFlashEdge;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      }
+      ctx.restore();
     }
   }
 

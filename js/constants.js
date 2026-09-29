@@ -31,6 +31,12 @@ export const STUN_MS = 10000;
 export const ENEMY_ICE_COST = 1.5;
 // ile trwa rozbijanie bloku lodu przez wroga (ms) - w tym czasie stoi w miejscu, a blok peka
 export const ENEMY_BREAK_MS = 1200;
+// pchniecie zewnetrznej sciany (jak w oryginale): sciana drga i oglusza wrogow stojacych tuz przy niej
+export const WALL_STUN_MS = 3500;
+export const WALL_SHAKE_MS = 320;
+export const WALL_PUSH_COOLDOWN_MS = 450;
+// punkty za zabicie ogluszonego wroga przez wejscie na niego
+export const STUNNED_KILL_POINTS = 100;
 
 export const COLORS = {
   wall: "#3a4a9f",
@@ -44,6 +50,9 @@ export const COLORS = {
   diamondBlink: "#3ee0d0",
   diamondBlinkEdge: "#1a8f86",
   floor: "#0f1642",
+  // uderzona sciana miga na przemian swoim kolorem i seledynowym, dopoki trwa ogluszenie
+  wallFlash: "#a8e6c1",
+  wallFlashEdge: "#5fbf8f",
 };
 
 // paleta kolorow wrogow - kazdy kolor ma tez wlasny "charakter":

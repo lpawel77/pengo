@@ -125,6 +125,18 @@ export function startStunMusic(durationMs, delayMs = 0) {
   };
 }
 
+/** Uderzenie w zewnetrzna sciane - niski, drgajacy brzek. */
+export function playWallShake() {
+  tone({ freqStart: 140, freqEnd: 90, duration: 0.28, type: "square", peak: 0.16 });
+  tone({ freqStart: 147, freqEnd: 95, duration: 0.28, type: "square", peak: 0.1, delay: 0.02 });
+}
+
+/** Zabicie ogluszonego wroga przez wejscie na niego. */
+export function playStunnedKill() {
+  tone({ freqStart: 700, freqEnd: 1400, duration: 0.1, type: "square", peak: 0.18 });
+  tone({ freqStart: 1050, freqEnd: 2100, duration: 0.1, type: "square", peak: 0.12, delay: 0.07 });
+}
+
 /** Utrata zycia (dotkniecie wroga). */
 export function playHit() {
   tone({ freqStart: 300, freqEnd: 60, duration: 0.35, type: "sawtooth", peak: 0.25 });
